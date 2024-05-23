@@ -15,7 +15,7 @@ public final class TSMobileAnalytics {
     // TODO: Find a way to automate this.
     /// This needs to be updated when a new release is made.
     /// Swift Package version numbers are grabbed from the tags of the git repository.
-    static let sdkVersion = "6.0.0"
+    static let sdkVersion = "6.0.3"
 
     static var shared: TSMobileAnalytics?
     static let logger = ConsoleLogger()
@@ -69,11 +69,19 @@ public final class TSMobileAnalytics {
     }
 
     private var shouldSyncWithSifoInternetApp: Bool {
-        guard Storage.shared.sdkVersion != Self.sdkVersion,
-              let cookieString = Storage.shared.cookieString,
-              !cookieString.isEmpty
-        else { return true }
-
+        
+        if(!isSifoInternetAppInstalled){
+            return false
+        }
+        
+        if(Storage.shared.sdkVersion != Self.sdkVersion){
+            return true
+        }
+        
+        if (Storage.shared.cookieString?.isEmpty ?? true){
+            return true
+        }
+        
         return false
     }
 
@@ -102,8 +110,8 @@ public final class TSMobileAnalytics {
         self.keychainAccessGroup = keychainAccessGroup
         self.additionals = additionals
 
-        self.shouldSyncWithBackendFirst = additionals[Keys.shouldSyncWithBackendFirst] == StringBool.true.rawValue
-        self.shouldUseJsonUrlSchemeSyncFormat = additionals[Keys.shouldUseJsonUrlSchemeSyncFormat] == StringBool.true.rawValue
+        self.shouldSyncWithBackendFirst = additionals[Keys.shouldSyncWithBackendFirst] ?? "true" == StringBool.true.rawValue
+        self.shouldUseJsonUrlSchemeSyncFormat = additionals[Keys.shouldUseJsonUrlSchemeSyncFormat] ?? "true" == StringBool.true.rawValue
 
         SDKIntegrationValidator.validate(applicationName: applicationName, cpid: cpid)
 
@@ -267,17 +275,14 @@ private extension TSMobileAnalytics {
         guard isOldPanelUserInfoCached || isSifoInternetAppInstalled
         else { return }
 
-        guard !IdentificationManager.shared.isSystemIdentifierTrackingEnabled,
-              !shouldSyncWithBackendFirst
-        else {
+        if (IdentificationManager.shared.isSystemIdentifierTrackingEnabled && shouldSyncWithBackendFirst) {
             syncCookiesWithBackend()
-            return
-        }
-
-        if hostAppIncludesExpectedUrlScheme && shouldSyncWithSifoInternetApp {
-            syncTokenWithSifoInternetApp(additionals: additionals)
         } else {
-            refreshCookies() { self.sendTagWithAppStart() }
+            if hostAppIncludesExpectedUrlScheme && shouldSyncWithSifoInternetApp {
+                syncTokenWithSifoInternetApp(additionals: additionals)
+            } else {
+                refreshCookies() { self.sendTagWithAppStart() }
+            }
         }
     }
 
@@ -296,10 +301,7 @@ private extension TSMobileAnalytics {
                         "Failed to sync with backend.",
                         "\(error)"],
                     verbosity: .error)
-
-                if !self.shouldSyncWithSifoInternetApp {
-                    self.refreshCookies() { self.sendTagWithAppStart() }
-                }
+                onBackendSyncError()
             case .success(let response):
                 Self.logger.log(
                     multipleLines: [
@@ -314,16 +316,26 @@ private extension TSMobileAnalytics {
                             "Failed to verify sync response.",
                             error.localizedDescription],
                         verbosity: .error)
+                    onBackendSyncError()
                     return
                 }
-
+                
                 Self.logger.log(
                     message: "Successfully synced with backend.",
                     verbosity: .info)
-
+                
                 self.updateCookieString(from: response)
                 self.refreshCookies { self.sendTagWithAppStart() }
             }
+        }
+    }
+    
+    private func onBackendSyncError(){
+        // fallback to sync with panelist app
+        if self.shouldSyncWithSifoInternetApp {
+            syncTokenWithSifoInternetApp(additionals: additionals)
+        } else {
+            self.refreshCookies() { self.sendTagWithAppStart() }
         }
     }
 
