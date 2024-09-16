@@ -15,7 +15,7 @@ public final class TSMobileAnalytics {
     // TODO: Find a way to automate this.
     /// This needs to be updated when a new release is made.
     /// Swift Package version numbers are grabbed from the tags of the git repository.
-    static let sdkVersion = "6.0.4"
+    static let sdkVersion = "6.0.5"
 
     static var shared: TSMobileAnalytics?
     static let logger = ConsoleLogger()
@@ -309,7 +309,15 @@ private extension TSMobileAnalytics {
                         String(data: response, encoding: .utf8) ?? .empty],
                     verbosity: .debug)
                 do {
-                    try _ = self.jsonDecoder.decode(SyncResponse.self, from: response)
+                    let syncResponse = try self.jsonDecoder.decode(SyncResponse.self, from: response)
+                    
+                    try self.updateCookieString(from: syncResponse.cookies)
+                    self.refreshCookies { self.sendTagWithAppStart()}
+                   
+                    Self.logger.log(
+                        message: "Successfully synced with backend.",
+                        verbosity: .info)
+                    
                 } catch {
                     Self.logger.log(
                         multipleLines: [
@@ -317,15 +325,7 @@ private extension TSMobileAnalytics {
                             error.localizedDescription],
                         verbosity: .error)
                     onBackendSyncError()
-                    return
                 }
-                
-                Self.logger.log(
-                    message: "Successfully synced with backend.",
-                    verbosity: .info)
-                
-                self.updateCookieString(from: response)
-                self.refreshCookies { self.sendTagWithAppStart() }
             }
         }
     }
@@ -338,12 +338,13 @@ private extension TSMobileAnalytics {
             self.refreshCookies() { self.sendTagWithAppStart() }
         }
     }
-
-    func updateCookieString(from data: Data) {
-        guard let cookieString = JSONManager.urlEncodedJSON(from: data)
-        else { return }
-
-        Storage.shared.cookieString = cookieString
+    
+    func updateCookieString(from cookies:[Cookie]) throws {
+        guard let urlEncoded = try cookies.urlEncoded() else {
+            Self.logger.log(message: "Unable to update cookies", verbosity: .error)
+            return
+        }
+        Storage.shared.cookieString = urlEncoded
     }
 
     func updateCookieString(_ cookieString: String) {
