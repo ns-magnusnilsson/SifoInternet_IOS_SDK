@@ -15,7 +15,7 @@ public final class TSMobileAnalytics {
     // TODO: Find a way to automate this.
     /// This needs to be updated when a new release is made.
     /// Swift Package version numbers are grabbed from the tags of the git repository.
-    static let sdkVersion = "6.0.5"
+    static let sdkVersion = "6.0.6"
 
     static var shared: TSMobileAnalytics?
     static let logger = ConsoleLogger()
@@ -429,7 +429,14 @@ private extension TSMobileAnalytics {
 
         if shouldUseJsonUrlSchemeSyncFormat,
            let jsonFromAdditionalsDictionary {
-            urlString.append(jsonFromAdditionalsDictionary)
+            if let encodedJson = jsonFromAdditionalsDictionary.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) {
+                urlString.append(encodedJson)
+            } else {
+                Self.logger.log(
+                    message: "Failed to encode JSON from additionals dictionary.",
+                    verbosity: .error)
+                return
+            }
         } else {
             urlString.append(Bundle.main.exchangeUrlScheme)
         }
@@ -443,7 +450,9 @@ private extension TSMobileAnalytics {
             return
         }
 
-        UIApplication.shared.open(url)
+        DispatchQueue.main.async {
+            UIApplication.shared.open(url)
+        }
     }
 
     static func deviceReference(applicationName: String) -> String? {
