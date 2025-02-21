@@ -10,6 +10,9 @@ let package = Package(
         .library(
             name: "TSMobileAnalytics",
             targets: ["TSMobileAnalytics"]),
+        .library( // Expose TSMobileAnalyticsObjC
+            name: "TSMobileAnalyticsObjC",
+            targets: ["TSMobileAnalyticsObjC"])
     ],
     dependencies: [
         // Dependencies declare other packages that this package depends on.
